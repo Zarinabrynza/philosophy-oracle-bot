@@ -10,7 +10,9 @@ from telebot.types import InlineQueryResultArticle, InputTextMessageContent
 from collections import defaultdict
 
 
-TOKEN = os.getenv("8152029520:AAFk5Ml3WLy3TqiX7-bMH2GK-SzLi34cDXk")
+TOKEN = (os.getenv("BOT_TOKEN") or "").strip()
+if not TOKEN:
+    raise RuntimeError("BOT_TOKEN is not set in environment variables")
 BOT_USERNAME = "PhilosophyOracleBot"  # без @, например: PhilosophyOracleBot
 EXCEL_FILE = "quotes.xlsx"
 
