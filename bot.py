@@ -325,10 +325,13 @@ def inline_prediction(query):
     text = format_prediction_inline(q, name)
 
 
+    tag_norm = normalize_tag(q.get('tag',''))
+    desc = f"{emoji_for_tag(tag_norm)} {tag_norm}" if tag_norm else "Тема: случайная"
+
     result = InlineQueryResultArticle(
-        id=str(time.time()),  # уникальный id результата
+        id=str(time.time()),
         title="Получить предсказание",
-        description=f"{q.get('author','')} • {normalize_tag(q.get('tag',''))}",
+        description=desc,
         input_message_content=InputTextMessageContent(text, parse_mode="HTML")
     )
 
