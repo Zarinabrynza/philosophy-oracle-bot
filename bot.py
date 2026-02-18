@@ -326,7 +326,7 @@ def inline_prediction(query):
 
 
     tag_norm = normalize_tag(q.get('tag',''))
-    desc = f"{emoji_for_tag(tag_norm)} {tag_norm}" if tag_norm else "Тема: случайная"
+    desc = f"{emoji_for_tag(tag_norm)}" if tag_norm else "Тема: случайная"
 
     result = InlineQueryResultArticle(
         id=str(time.time()),
