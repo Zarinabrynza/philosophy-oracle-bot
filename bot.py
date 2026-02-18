@@ -219,23 +219,12 @@ def format_prediction_inline(q: dict, display_name: str) -> str:
     quote = esc(strip_outer_quotes(q["quote"]))
     author = esc(q["author"].strip())
 
-    source = (q.get("source") or "").strip()
-    work, location = "", ""
-    if source:
-        parts = source.split(" ", 1)
-        if len(parts) == 2:
-            work, location = parts[0].strip(), parts[1].strip()
-        else:
-            work = source.strip()
-
-    work = esc(work) if work else ""
-    location = esc(location) if location else ""
+    source = esc((q.get("source") or "").strip())
 
     line2 = f"- {author}"
-    if work:
-        line2 += f', "{work}"'
-    if location:
-        line2 += f", {location}"
+    if source:
+        line2 += f', "{source}"'
+
 
     tag_norm = normalize_tag((q.get("tag") or "").strip())
     tag_line = emoji_for_tag(tag_norm) if tag_norm else ""
@@ -260,23 +249,12 @@ def format_prediction(q: dict, message) -> str:
     quote = esc(strip_outer_quotes(q["quote"]))
     author = esc(q["author"].strip())
 
-    source = (q.get("source") or "").strip()
-    work, location = "", ""
-    if source:
-        parts = source.split(" ", 1)
-        if len(parts) == 2:
-            work, location = parts[0].strip(), parts[1].strip()
-        else:
-            work = source.strip()
-
-    work = esc(work) if work else ""
-    location = esc(location) if location else ""
+    source = esc((q.get("source") or "").strip())
 
     line2 = f"- {author}"
-    if work:
-        line2 += f', "{work}"'
-    if location:
-        line2 += f", {location}"
+    if source:
+     line2 += f', "{source}"'
+
 
     tag_norm = normalize_tag((q.get("tag") or "").strip())
     tag_line = emoji_for_tag(tag_norm) if tag_norm else ""
