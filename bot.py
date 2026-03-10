@@ -8,6 +8,9 @@ from openpyxl import load_workbook
 from datetime import datetime
 from telebot.types import InlineQueryResultArticle, InputTextMessageContent
 from collections import defaultdict
+import json
+import threading
+from zoneinfo import ZoneInfo
 
 
 TOKEN = (os.getenv("BOT_TOKEN") or "").strip()
@@ -18,9 +21,69 @@ EXCEL_FILE = "quotes.xlsx"
 
 bot = telebot.TeleBot(TOKEN)
 bags = defaultdict(list)
+BOT_TZ = ZoneInfo("Europe/Moscow")
+CHAT_STATE_FILE = "chat_state.json"
+
+# сюда можно вставить file_id смешных стикеров
+FUNNY_STICKERS = [
+    # "CAACAgIAAxkBAA...",
+    # "CAACAgIAAxkBAA..."
+]
 
 def esc(s: str) -> str:
     return html.escape(str(s), quote=False)
+
+def load_chat_state():
+    if not os.path.exists(CHAT_STATE_FILE):
+        return {"known_chats": [], "daily_sent": {}}
+
+    try:
+        with open(CHAT_STATE_FILE, "r", encoding="utf-8") as f:
+            data = json.load(f)
+            return {
+                "known_chats": data.get("known_chats", []),
+                "daily_sent": data.get("daily_sent", {})
+            }
+    except Exception:
+        return {"known_chats": [], "daily_sent": {}}
+
+
+def save_chat_state():
+    data = {
+        "known_chats": list(known_chats),
+        "daily_sent": daily_sent
+    }
+    with open(CHAT_STATE_FILE, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+
+
+chat_state = load_chat_state()
+known_chats = set(chat_state["known_chats"])
+daily_sent = chat_state["daily_sent"]
+
+
+def today_str():
+    return datetime.now(BOT_TZ).strftime("%Y-%m-%d")
+
+
+def current_hm():
+    now = datetime.now(BOT_TZ)
+    return now.hour, now.minute
+
+
+def remember_chat(chat_id: int):
+    if chat_id not in known_chats:
+        known_chats.add(chat_id)
+        save_chat_state()
+
+
+def was_daily_sent_today(chat_id: int) -> bool:
+    return daily_sent.get(str(chat_id)) == today_str()
+
+
+def mark_daily_sent(chat_id: int):
+    daily_sent[str(chat_id)] = today_str()
+    save_chat_state()
 
 def pick_quote_bag(key: int):
     bag = bags[key]
@@ -265,7 +328,25 @@ def format_prediction(q: dict, message) -> str:
         return f"{header}\n\n{quote_block}\n\n{line2} {esc(tag_line)}"
     return f"{header}\n\n{quote_block}\n\n{line2}"
 
+def format_chat_prediction(q: dict) -> str:
+    quote = esc(strip_outer_quotes(q["quote"]))
+    author = esc(q["author"].strip())
+    source = esc((q.get("source") or "").strip())
 
+    header = "🌞 Общее предсказание на сегодня для чата"
+
+    line2 = f"- {author}"
+    if source:
+        line2 += f', "{source}"'
+
+    tag_norm = normalize_tag((q.get("tag") or "").strip())
+    tag_line = emoji_for_tag(tag_norm) if tag_norm else ""
+
+    quote_block = f"<blockquote>{quote}</blockquote>"
+
+    if tag_line:
+        return f"{header}\n\n{quote_block}\n\n{line2} {esc(tag_line)}"
+    return f"{header}\n\n{quote_block}\n\n{line2}"
 
 def is_bot_mentioned(message) -> bool:
     # 1) Если Telegram прислал entities с упоминанием @username
@@ -281,6 +362,52 @@ def is_bot_mentioned(message) -> bool:
         return True
 
     return False
+
+def send_daily_chat_prediction(chat_id: int):
+    if was_daily_sent_today(chat_id):
+        return
+
+    if not QUOTES:
+        return
+
+    q = pick_quote_bag(chat_id)
+    text = format_chat_prediction(q)
+
+    try:
+        bot.send_message(chat_id, text, parse_mode="HTML")
+
+        if FUNNY_STICKERS:
+            sticker_id = random.choice(FUNNY_STICKERS)
+            bot.send_sticker(chat_id, sticker_id)
+
+        mark_daily_sent(chat_id)
+
+    except Exception as e:
+        print(f"Failed to send daily prediction to chat {chat_id}: {e}")
+
+def daily_scheduler():
+    last_checked_date = None
+
+    while True:
+        try:
+            now = datetime.now(BOT_TZ)
+            today = now.strftime("%Y-%m-%d")
+            hour = now.hour
+            minute = now.minute
+
+            # в 09:00 отправляем во все известные чаты
+            if hour == 9 and minute == 0:
+                # чтобы в рамках одной минуты не дублировать из-за цикла
+                if last_checked_date != today:
+                    for chat_id in list(known_chats):
+                        send_daily_chat_prediction(chat_id)
+                    last_checked_date = today
+
+            time.sleep(30)
+
+        except Exception as e:
+            print(f"Scheduler error: {e}")
+            time.sleep(30)
 
 @bot.inline_handler(func=lambda query: True)
 def inline_prediction(query):
@@ -318,12 +445,13 @@ def inline_prediction(query):
 
 @bot.message_handler(commands=["start", "help"])
 def start_help(message):
+    remember_chat(message.chat.id)
+
     bot.reply_to(
         message,
         "Привет! Отметь меня в сообщении, и я дам предсказание цитатой.\n"
         "Например: @{} дай предсказание".format(BOT_USERNAME)
     )
-
 
 @bot.message_handler(func=lambda m: bool(m.text) and is_bot_mentioned(m))
 def send_prediction_on_mention(message):
@@ -331,10 +459,16 @@ def send_prediction_on_mention(message):
         bot.reply_to(message, "Похоже, база цитат пустая. Проверь файл quotes.xlsx 🙂")
         return
 
+    remember_chat(message.chat.id)
+
     q = pick_quote_bag(message.chat.id)
     bot.reply_to(message, format_prediction(q, message), parse_mode="HTML")
 
 
 if __name__ == "__main__":
     print("Bot is running...")
+
+    scheduler_thread = threading.Thread(target=daily_scheduler, daemon=True)
+    scheduler_thread.start()
+
     bot.infinity_polling(timeout=30, long_polling_timeout=30)
