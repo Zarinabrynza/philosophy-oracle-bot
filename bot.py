@@ -25,10 +25,18 @@ BOT_TZ = ZoneInfo("Europe/Moscow")
 CHAT_STATE_FILE = "chat_state.json"
 
 # сюда можно вставить file_id смешных стикеров
-FUNNY_STICKERS = [
-    # "CAACAgIAAxkBAA...",
-    # "CAACAgIAAxkBAA..."
+FUNNY_STICKER_SETS = [
+    "cwcwhab_by_fStikBo",
+    "monke2004",
+    "JackalCats",
+    "set_3099_by_makestick3_bot",
+    "Yellowboi",
+    "dog_1_by_MoiStikiBot",
+    "ketrinsky",
+    "HypeFoodByUffchat",
 ]
+
+sticker_cache = {}
 
 def esc(s: str) -> str:
     return html.escape(str(s), quote=False)
@@ -85,6 +93,30 @@ def mark_daily_sent(chat_id: int):
     daily_sent[str(chat_id)] = today_str()
     save_chat_state()
 
+def get_random_sticker_file_id():
+    if not FUNNY_STICKER_SETS:
+        return None
+
+    set_name = random.choice(FUNNY_STICKER_SETS)
+
+    try:
+        if set_name in sticker_cache:
+            stickers = sticker_cache[set_name]
+        else:
+            sticker_set = bot.get_sticker_set(set_name)
+            stickers = sticker_set.stickers
+            sticker_cache[set_name] = stickers
+
+        if not stickers:
+            return None
+
+        sticker = random.choice(stickers)
+        return sticker.file_id
+
+    except Exception as e:
+        print(f"Failed to load sticker set {set_name}: {e}")
+        return None
+
 def pick_quote_bag(key: int):
     bag = bags[key]
     if not bag:
@@ -117,13 +149,6 @@ def load_quotes_from_excel(path: str):
 
 QUOTES = load_quotes_from_excel(EXCEL_FILE)
 
-def pick_quote_bag(key: int):
-    bag = bags[key]
-    if not bag:
-        bag = QUOTES[:]      # копия всех цитат
-        random.shuffle(bag) # перемешали
-        bags[key] = bag
-    return bag.pop()
 
 
 def normalize_tag(raw: str) -> str:
@@ -376,14 +401,16 @@ def send_daily_chat_prediction(chat_id: int):
     try:
         bot.send_message(chat_id, text, parse_mode="HTML")
 
-        if FUNNY_STICKERS:
-            sticker_id = random.choice(FUNNY_STICKERS)
+        sticker_id = get_random_sticker_file_id()
+        if sticker_id:
             bot.send_sticker(chat_id, sticker_id)
 
         mark_daily_sent(chat_id)
+        
 
     except Exception as e:
         print(f"Failed to send daily prediction to chat {chat_id}: {e}")
+
 
 def daily_scheduler():
     last_checked_date = None
